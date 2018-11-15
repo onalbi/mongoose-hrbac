@@ -3,18 +3,18 @@ import indexOf from 'lodash/indexOf';
 import without from 'lodash/without';
 
 function getScope(rbac, cb) {
-  const permissions = this.permissions || [];
+    const permissions = this.permissions || [];
 
-  rbac.getScope(this.role, (err, scope) => {
-    if (err) {
-      return cb(err);
-    }
+    rbac.getScope(this.role, (err, scope) => {
+        if (err) {
+            return cb(err);
+        }
 
-    const newScope = union(permissions, scope);
-    return cb(null, newScope);
-  });
+        const newScope = union(permissions, scope);
+        return cb(null, newScope);
+    });
 
-  return this;
+    return this;
 }
 
 /**
@@ -24,31 +24,22 @@ function getScope(rbac, cb) {
  * @param  {String}   resource  Name of resource
  * @return {Boolean}
  */
-function can(rbac, action, resource, cb) {
-  // check existance of permission
-  rbac.getPermission(action, resource, (err, permission) => {
-    if (err) {
-      return cb(err);
-    }
+async function can(rbac, action, resource, cb) {
+    var _this = this, permission = await rbac.getPermission(action, resource);
 
+    // check existance of permission
     if (!permission) {
-      return cb(null, false);
+        return false;
     }
-
     // check user additional permissions
-    if (indexOf(this.permissions, permission.name) !== -1) {
-      return cb(null, true);
+    if ((0, _indexOf2.default)(_this.permissions, permission.name) !== -1) {
+        return true;
     }
-
-    if (!this.role) {
-      return cb(null, false);
+    if (!_this.role) {
+        return false;
     }
-
     // check permission inside user role
-    return rbac.can(this.role, action, resource, cb);
-  });
-
-  return this;
+    return await rbac.can(_this.role, action, resource);
 }
 
 /**
@@ -57,80 +48,71 @@ function can(rbac, action, resource, cb) {
  * @param  {Function} cb Callback
  */
 function addPermission(rbac, action, resource, cb) {
-  rbac.getPermission(action, resource, (err, permission) => {
-    if (err) {
-      return cb(err);
-    }
+    rbac.getPermission(action, resource, (err, permission) => {
+        if (err) {
+            return cb(err);
+        }
 
-    if (!permission) {
-      return cb(new Error('Permission not exists'));
-    }
+        if (!permission) {
+            return cb(new Error('Permission not exists'));
+        }
 
-    if (indexOf(this.permissions, permission.name) !== -1) {
-      return cb(new Error('Permission is already assigned'));
-    }
+        if (indexOf(this.permissions, permission.name) !== -1) {
+            return cb(new Error('Permission is already assigned'));
+        }
 
-    this.permissions.push(permission.name);
-    return this.save((err2, user) => {
-      if (err2) {
-        return cb(err2);
-      }
+        this.permissions.push(permission.name);
+        return this.save((err2, user) => {
+            if (err2) {
+                return cb(err2);
+            }
 
-      if (!user) {
-        return cb(new Error('User is undefined'));
-      }
+            if (!user) {
+                return cb(new Error('User is undefined'));
+            }
 
-      return cb(null, true);
+            return cb(null, true);
+        });
     });
-  });
 
-  return this;
+    return this;
 }
 
 function removePermission(permissionName, cb) {
-  if (indexOf(this.permissions, permissionName) === -1) {
-    cb(new Error('Permission was not asssigned'));
+    if (indexOf(this.permissions, permissionName) === -1) {
+        cb(new Error('Permission was not asssigned'));
+        return this;
+    }
+
+    this.permissions = without(this.permissions, permissionName);
+    this.save((err, user) => {
+        if (err) {
+            return cb(err);
+        }
+
+        if (!user) {
+            return cb(new Error('User is undefined'));
+        }
+
+        if (indexOf(user.permissions, permissionName) !== -1) {
+            return cb(new Error('Permission was not removed'));
+        }
+
+        return cb(null, true);
+    });
+
     return this;
-  }
-
-  this.permissions = without(this.permissions, permissionName);
-  this.save((err, user) => {
-    if (err) {
-      return cb(err);
-    }
-
-    if (!user) {
-      return cb(new Error('User is undefined'));
-    }
-
-    if (indexOf(user.permissions, permissionName) !== -1) {
-      return cb(new Error('Permission was not removed'));
-    }
-
-    return cb(null, true);
-  });
-
-  return this;
 }
 
 function removePermissionFromCollection(permissionName, cb) {
-  this.update({
-    permissions: permissionName,
-  }, {
-    $pull: {
-      permissions: permissionName,
-    },
-  }, {
-    multi: true,
-  }, (err, num) => {
-    if (err) {
-      return cb(err);
-    }
-
-    return cb(null, true);
-  });
-
-  return this;
+    this.update(
+        {permissions: permissionName},
+        {$pull: {permissions: permissionName}},
+        {multi: true,}, (err, num) => {
+            return err ? cb(err) : cb(null, true);
+        }
+    );
+    return this;
 }
 
 /**
@@ -139,113 +121,109 @@ function removePermissionFromCollection(permissionName, cb) {
  * @param  {String}  name Name of role
  * @return {Boolean}      [description]
  */
-function hasRole(rbac, role, cb) {
-  if (!this.role) {
-    cb(null, false);
-    return this;
-  }
-
-  // check existance of permission
-  rbac.hasRole(this.role, role, cb);
-  return this;
+async function hasRole(rbac, role) {
+    if (!this.role) {
+        return false;
+    }
+    return await rbac.hasRole(this.role, role);
 }
 
 function removeRole(cb) {
-  if (!this.role) {
-    cb(null, false);
+    if (!this.role) {
+        cb(null, false);
+        return this;
+    }
+
+    this.role = null;
+    this.save((err, user) => {
+        if (err) {
+            return cb(err);
+        }
+
+        if (!user) {
+            return cb(new Error('User is undefined'));
+        }
+
+        return cb(null, user.role === null);
+    });
+
     return this;
-  }
-
-  this.role = null;
-  this.save((err, user) => {
-    if (err) {
-      return cb(err);
-    }
-
-    if (!user) {
-      return cb(new Error('User is undefined'));
-    }
-
-    return cb(null, user.role === null);
-  });
-
-  return this;
 }
 
 function removeRoleFromCollection(roleName, cb) {
-  this.update({
-    role: roleName,
-  }, {
-    role: null,
-  }, {
-    multi: true,
-  }, (err, num) => {
-    if (err) {
-      return cb(err);
-    }
+    this.update({
+        role: roleName,
+    }, {
+        role: null,
+    }, {
+        multi: true,
+    }, (err, num) => {
+        if (err) {
+            return cb(err);
+        }
 
-    return cb(null, true);
-  });
+        return cb(null, true);
+    });
 
-  return this;
+    return this;
 }
 
 function setRole(rbac, role, cb) {
-  if (this.role === role) {
-    cb(new Error('User already has assigned this role'));
-    return this;
-  }
-
-  // check existance of permission
-  rbac.getRole(role, (err, role) => {
-    if (err) {
-      return cb(err);
+    if (this.role === role) {
+        cb(new Error('User already has assigned this role'));
+        return this;
     }
 
-    if (!role) {
-      return cb(new Error('Role does not exists'));
-    }
+    // check existance of permission
+    rbac.getRole(role, (err, role) => {
+        if (err) {
+            return cb(err);
+        }
 
-    this.role = role.name;
-    return this.save((err2, user) => {
-      if (err2) {
-        return cb(err2);
-      }
+        if (!role) {
+            return cb(new Error('Role does not exists'));
+        }
 
-      if (!user) {
-        return cb(new Error('User is undefined'));
-      }
+        this.role = role.name;
+        return this.save((err2, user) => {
+            if (err2) {
+                return cb(err2);
+            }
 
-      return cb(null, user.role === this.role);
+            if (!user) {
+                return cb(new Error('User is undefined'));
+            }
+
+            return cb(null, user.role === this.role);
+        });
     });
-  });
 
-  return this;
+    return this;
 }
 
 export default function hrbacPlugin(schema, options = {}) {
-  schema.add({
-    role: {
-      type: String,
-      default: options.defaultRole,
-    },
-    permissions: {
-      type: [String],
-      default: options.defaultPermissions,
-    },
-  });
+    schema.add({
+        role: {
+            type: String,
+            default: options.defaultRole,
+        },
+        permissions: {
+            type: [String],
+            default: options.defaultPermissions,
+        },
+    });
 
-  schema.methods.can = can;
+    schema.methods.can = can;
 
-  schema.methods.addPermission = addPermission;
-  schema.methods.removePermission = removePermission;
+    schema.methods.addPermission = addPermission;
+    schema.methods.removePermission = removePermission;
 
-  schema.methods.hasRole = hasRole;
-  schema.methods.removeRole = removeRole;
-  schema.methods.setRole = setRole;
+    schema.methods.hasRole = hasRole;
+    schema.methods.removeRole = removeRole;
+    schema.methods.setRole = setRole;
 
-  schema.methods.getScope = getScope;
+    schema.methods.getScope = getScope;
 
-  schema.statics.removeRoleFromCollection = removeRoleFromCollection;
-  schema.statics.removePermissionFromCollection = removePermissionFromCollection;
+    schema.statics.removeRoleFromCollection = removeRoleFromCollection;
+    schema.statics.removePermissionFromCollection = removePermissionFromCollection;
 }
