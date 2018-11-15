@@ -117,6 +117,8 @@ var hasRole = function () {
 
 exports.default = hrbacPlugin;
 
+require('babel-polyfill');
+
 var _union = require('lodash/union');
 
 var _union2 = _interopRequireDefault(_union);

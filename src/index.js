@@ -1,3 +1,4 @@
+import 'babel-polyfill';
 import union from 'lodash/union';
 import indexOf from 'lodash/indexOf';
 import without from 'lodash/without';
